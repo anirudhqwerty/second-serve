@@ -35,7 +35,6 @@ export default function CreateFoodListing() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
 
-  // UPDATED: New fields for Food Donation
   const [quantity, setQuantity] = useState("");
   const [expiryHours, setExpiryHours] = useState("");
   const [foodType, setFoodType] = useState<"veg" | "non_veg" | "both">("veg");
@@ -60,9 +59,47 @@ export default function CreateFoodListing() {
   const mapRef = useRef<any>(null);
   const searchTimeout = useRef<any>(null);
 
+  // Get MapView components only on native
+  const getMapsComponents = () => {
+    if (Platform.OS === "web") return null;
+    try {
+      const Maps = require("react-native-maps");
+      return {
+        MapView: Maps.default,
+        PROVIDER_GOOGLE: Maps.PROVIDER_GOOGLE,
+      };
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const mapsComponents = getMapsComponents();
+
+  // Web fallback UI
+  if (Platform.OS === "web") {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Post Donation</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.messageContainer}>
+          <Text style={styles.messageText}>
+            Creating food donations is not available on web. Please use the mobile app.
+          </Text>
+          <Pressable onPress={() => router.back()} style={styles.backButtonFull}>
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   const pickImages = async () => {
     if (images.length >= 3) {
-      // Reduced limit for food to 3
       Alert.alert("Limit Reached", "You can only add up to 3 images.");
       return;
     }
@@ -71,7 +108,7 @@ export default function CreateFoodListing() {
       mediaTypes: ["images"],
       allowsMultipleSelection: true,
       selectionLimit: 3 - images.length,
-      quality: 0.6, // Lower quality is fine for food
+      quality: 0.6,
     });
 
     if (!result.canceled) {
@@ -97,7 +134,6 @@ export default function CreateFoodListing() {
           encoding: "base64",
         });
 
-        // UPDATED: Bucket name if needed, keeping 'listing-images' is fine
         const { error: uploadError } = await supabase.storage
           .from("listing-images")
           .upload(fileName, decode(base64), {
@@ -204,7 +240,6 @@ export default function CreateFoodListing() {
   const handleSubmit = async () => {
     triggerHaptic(Haptics.ImpactFeedbackStyle.Medium);
 
-    // UPDATED: Validation
     if (!title || !description || !quantity || !expiryHours || !address) {
       Alert.alert("Missing info", "Please fill all required fields");
       return;
@@ -229,20 +264,18 @@ export default function CreateFoodListing() {
 
       const uploadedImageUrls = await uploadImages(user.id);
 
-      // UPDATED: Insert into 'food_listings'
-      // Calculate Expiry Time
       const expiryDate = new Date();
       expiryDate.setHours(expiryDate.getHours() + parseInt(expiryHours));
 
       const { data: newListing, error } = await supabase
         .from("food_listings")
         .insert({
-          hotel_id: user.id, // Changed owner_id -> hotel_id
+          hotel_id: user.id,
           title,
           description,
-          quantity_kg: parseFloat(quantity), // Changed rent -> quantity_kg
-          food_type: foodType, // New field
-          expiry_time: expiryDate.toISOString(), // New field
+          quantity_kg: parseFloat(quantity),
+          food_type: foodType,
+          expiry_time: expiryDate.toISOString(),
           address,
           latitude: location.latitude,
           longitude: location.longitude,
@@ -256,7 +289,6 @@ export default function CreateFoodListing() {
 
       console.log("Food Listing created:", newListing.id);
 
-      // UPDATED: Send notifications logic (Updated payload)
       try {
         console.log("Sending notifications to nearby NGOs...");
         const notificationResult = await sendNotificationToNearbyUsers(
@@ -265,135 +297,56 @@ export default function CreateFoodListing() {
             title: `Free Food: ${title}`,
             latitude: Number(location.latitude),
             longitude: Number(location.longitude),
-            // Not relevant, passing 0 or removing from function type
-            // You might need to update the notification function signature in lib/notifications.ts
           },
         );
-
-        if (notificationResult?.success) {
-          console.log(
-            `Notifications sent to ${notificationResult.count} users`,
-          );
-        }
+        console.log("Notification result:", notificationResult);
       } catch (notifError) {
-        console.error("Error in notification process:", notifError);
+        console.warn("Failed to send notifications:", notifError);
       }
 
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
+
       Alert.alert(
-        "Success",
-        "Food donation listed! Nearby NGOs have been notified.",
+        "Success!",
+        "Your food donation has been posted and NGOs nearby have been notified.",
         [{ text: "OK", onPress: () => router.back() }],
       );
     } catch (err: any) {
-      console.error("Error creating listing:", err);
-      Alert.alert("Error", err.message ?? "Something went wrong");
+      console.error(err);
+      Alert.alert("Error", err.message ?? "Failed to create listing");
     } finally {
       setLoading(false);
       setUploading(false);
     }
   };
 
-  // Web fallback - show immediately for web platform
-  if (Platform.OS === "web") {
-    return (
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#007AFF" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Post Food Donation</Text>
-          <View style={{ width: 60 }} />
-        </View>
-        <View style={styles.messageContainer}>
-          <Text style={styles.messageText}>
-            Posting food donations is currently available only on mobile. Please
-            use the mobile app to create a listing.
-          </Text>
-          <Pressable
-            onPress={() => router.back()}
-            style={styles.backButtonFull}
-          >
-            <Text style={styles.backButtonText}>Go Back</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  // Get maps components only for native platforms
-  const getMapsComponents = () => {
-    if (Platform.OS === "web") return null;
-    try {
-      const MapView = require("react-native-maps").default;
-      const { PROVIDER_GOOGLE } = require("react-native-maps");
-      const { Region } = require("react-native-maps");
-      return { MapView, PROVIDER_GOOGLE, Region };
-    } catch (error) {
-      console.warn("react-native-maps not available:", error);
-      return null;
-    }
-  };
-
-  const mapsComponents = getMapsComponents();
-
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#007AFF" />
-          </Pressable>
-          <Text style={styles.headerTitle}>Post Food Donation</Text>
-          <View style={{ width: 60 }} />
-        </View>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#007AFF" />
+        </Pressable>
+        <Text style={styles.headerTitle}>Post Donation</Text>
+        <View style={{ width: 40 }} />
+      </View>
 
+      <View style={styles.scrollView}>
         <ScrollView
-          style={styles.scrollView}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {/* Images Section */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Food Photos ({images.length}/3)</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.imagesScroll}
-            >
-              {images.map((uri, index) => (
-                <View key={index} style={styles.imageWrapper}>
-                  <Image source={{ uri }} style={styles.thumbnail} />
-                  <Pressable
-                    onPress={() => removeImage(index)}
-                    style={styles.removeBtn}
-                  >
-                    <Ionicons name="close-circle" size={24} color="#DC2626" />
-                  </Pressable>
-                </View>
-              ))}
-
-              {images.length < 3 && (
-                <Pressable onPress={pickImages} style={styles.addImageBtn}>
-                  <Ionicons name="camera-outline" size={32} color="#007AFF" />
-                  <Text style={styles.addImageText}>Add Photo</Text>
-                </Pressable>
-              )}
-            </ScrollView>
-          </View>
-
           {/* Title */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Food Title</Text>
+            <Text style={styles.label}>Title *</Text>
             <View style={styles.inputWrapper}>
               <TextInput
-                placeholder="e.g., Leftover Buffet Rice & Curry"
+                placeholder="e.g., Fresh Biryani, Mixed Vegetables"
                 placeholderTextColor="#9CA3AF"
                 style={styles.input}
                 value={title}
@@ -402,73 +355,12 @@ export default function CreateFoodListing() {
             </View>
           </View>
 
-          {/* Food Type Selector */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Food Type</Text>
-            <View style={styles.typeContainer}>
-              {["veg", "non_veg", "both"].map((type) => (
-                <Pressable
-                  key={type}
-                  style={[
-                    styles.typeButton,
-                    foodType === type && styles.typeButtonActive,
-                  ]}
-                  onPress={() => setFoodType(type as any)}
-                >
-                  <Text
-                    style={[
-                      styles.typeText,
-                      foodType === type && styles.typeTextActive,
-                    ]}
-                  >
-                    {type === "veg"
-                      ? "Veg"
-                      : type === "non_veg"
-                        ? "Non-Veg"
-                        : "Both"}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Quantity & Expiry Row */}
-          <View style={styles.rowContainer}>
-            <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-              <Text style={styles.label}>Quantity (kg)</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  placeholder="e.g. 5"
-                  placeholderTextColor="#9CA3AF"
-                  style={styles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-
-            <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
-              <Text style={styles.label}>Expires In (Hours)</Text>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  placeholder="e.g. 4"
-                  placeholderTextColor="#9CA3AF"
-                  style={styles.input}
-                  value={expiryHours}
-                  onChangeText={setExpiryHours}
-                  keyboardType="numeric"
-                />
-              </View>
-            </View>
-          </View>
-
           {/* Description */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Description</Text>
+            <Text style={styles.label}>Description *</Text>
             <View style={[styles.inputWrapper, styles.textArea]}>
               <TextInput
-                placeholder="Describe contents, containers needed, pickup instructions..."
+                placeholder="Describe the food items and condition..."
                 placeholderTextColor="#9CA3AF"
                 style={[styles.input, styles.textAreaInput]}
                 value={description}
@@ -479,12 +371,104 @@ export default function CreateFoodListing() {
             </View>
           </View>
 
-          {/* Address Search */}
+          {/* Quantity & Expiry */}
+          <View style={styles.rowContainer}>
+            <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
+              <Text style={styles.label}>Quantity (kg) *</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  placeholder="e.g., 5"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={quantity}
+                  onChangeText={setQuantity}
+                />
+              </View>
+            </View>
+
+            <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>
+              <Text style={styles.label}>Expires in (hrs) *</Text>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  placeholder="e.g., 4"
+                  placeholderTextColor="#9CA3AF"
+                  style={styles.input}
+                  keyboardType="numeric"
+                  value={expiryHours}
+                  onChangeText={setExpiryHours}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* Food Type */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Pickup Location</Text>
+            <Text style={styles.label}>Food Type *</Text>
+            <View style={styles.typeContainer}>
+              {(["veg", "non_veg", "both"] as const).map((type) => (
+                <Pressable
+                  key={type}
+                  style={[
+                    styles.typeButton,
+                    foodType === type && styles.typeButtonActive,
+                  ]}
+                  onPress={() => {
+                    setFoodType(type);
+                    triggerHaptic(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.typeText,
+                      foodType === type && styles.typeTextActive,
+                    ]}
+                  >
+                    {type === "veg"
+                      ? "🌱 Veg"
+                      : type === "non_veg"
+                        ? "🍗 Non-Veg"
+                        : "🍽️ Both"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+
+          {/* Images */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Food Photos * (Max 3)</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imagesScroll}
+            >
+              {images.map((uri, index) => (
+                <View key={index} style={styles.imageWrapper}>
+                  <Image source={{ uri }} style={styles.thumbnail} />
+                  <Pressable
+                    style={styles.removeBtn}
+                    onPress={() => removeImage(index)}
+                  >
+                    <Ionicons name="close-circle" size={24} color="#EF4444" />
+                  </Pressable>
+                </View>
+              ))}
+              {images.length < 3 && (
+                <Pressable style={styles.addImageBtn} onPress={pickImages}>
+                  <Ionicons name="camera" size={28} color="#007AFF" />
+                  <Text style={styles.addImageText}>Add Photo</Text>
+                </Pressable>
+              )}
+            </ScrollView>
+          </View>
+
+          {/* Address / Location */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Pickup Location *</Text>
             <View style={styles.inputWrapper}>
               <Ionicons
-                name="location-outline"
+                name="location-sharp"
                 size={20}
                 color="#6B7280"
                 style={{ marginRight: 10 }}
@@ -524,20 +508,18 @@ export default function CreateFoodListing() {
           </View>
 
           {/* Map Preview */}
-          {showMap && (
+          {showMap && mapsComponents && (
             <View style={styles.mapContainer}>
               <Text style={styles.label}>Confirm Location</Text>
               <View style={styles.mapWrapper}>
-                {mapsComponents && (
-                  <mapsComponents.MapView
-                    ref={mapRef}
-                    provider={mapsComponents.PROVIDER_GOOGLE}
-                    style={styles.map}
-                    initialRegion={location}
-                    onMapReady={() => setIsMapReady(true)}
-                    onRegionChangeComplete={onRegionChangeComplete}
-                  />
-                )}
+                <mapsComponents.MapView
+                  ref={mapRef}
+                  provider={mapsComponents.PROVIDER_GOOGLE}
+                  style={styles.map}
+                  initialRegion={location}
+                  onMapReady={() => setIsMapReady(true)}
+                  onRegionChangeComplete={onRegionChangeComplete}
+                />
                 <View style={styles.markerFixed}>
                   <Ionicons name="location-sharp" size={40} color="#EA4335" />
                 </View>
@@ -559,7 +541,7 @@ export default function CreateFoodListing() {
             disabled={loading}
           >
             <LinearGradient
-              colors={["#059669", "#047857"]} // Green for food/eco
+              colors={["#059669", "#047857"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
               style={styles.submitGradient}

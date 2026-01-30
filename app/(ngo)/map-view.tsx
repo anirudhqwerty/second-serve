@@ -21,20 +21,6 @@ const triggerHaptic = (style: Haptics.ImpactFeedbackStyle) => {
   }
 };
 
-// Conditionally import react-native-maps only on native platforms
-let MapView: any = null;
-let PROVIDER_GOOGLE: any = null;
-let Marker: any = null;
-let Region: any = null;
-
-if (Platform.OS !== "web") {
-  const mapsModule = require("react-native-maps");
-  MapView = mapsModule.default;
-  PROVIDER_GOOGLE = mapsModule.PROVIDER_GOOGLE;
-  Marker = mapsModule.Marker;
-  Region = mapsModule.Region;
-}
-
 export default function NgoMapView() {
   const [listings, setListings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +54,24 @@ export default function NgoMapView() {
     );
   }
 
+  // Get maps components only for native platforms
+  const getMapsComponents = () => {
+    if (Platform.OS === "web") return null;
+    try {
+      const Maps = require("react-native-maps");
+      return {
+        MapView: Maps.default,
+        Marker: Maps.Marker,
+        PROVIDER_GOOGLE: Maps.PROVIDER_GOOGLE,
+      };
+    } catch (error) {
+      console.warn("react-native-maps not available:", error);
+      return null;
+    }
+  };
+
+  const mapsComponents = getMapsComponents();
+
   // Default to a central location (e.g. city center)
   const [region, setRegion] = useState<any>({
     latitude: 30.3398,
@@ -89,9 +93,6 @@ export default function NgoMapView() {
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // 1. Get User Location (Stored in Profile)
-      // UPDATED: notification_settings logic merged into profile/or separate table
-      // Assuming 'profiles' has location based on your new schema instructions
       const { data: profile } = await supabase
         .from("profiles")
         .select("latitude, longitude")
@@ -102,15 +103,13 @@ export default function NgoMapView() {
         const newRegion = {
           latitude: profile.latitude,
           longitude: profile.longitude,
-          latitudeDelta: 0.05, // Zoom in closer for food
+          latitudeDelta: 0.05,
           longitudeDelta: 0.05,
         };
         setRegion(newRegion);
         mapRef.current?.animateToRegion(newRegion, 1000);
       }
 
-      // 2. Fetch Nearby Food Listings (Available & Not Expired)
-      // UPDATED: Using 'food_listings' table
       const { data: listingsData } = await supabase
         .from("food_listings")
         .select(
@@ -120,7 +119,7 @@ export default function NgoMapView() {
         `,
         )
         .eq("status", "available")
-        .gt("expiry_time", new Date().toISOString()) // Filter expired
+        .gt("expiry_time", new Date().toISOString())
         .not("latitude", "is", null)
         .not("longitude", "is", null);
 
@@ -154,6 +153,33 @@ export default function NgoMapView() {
     );
   }
 
+  if (!mapsComponents) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Nearby Food</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.messageContainer}>
+          <Text style={styles.messageText}>
+            Maps library not available. Please check your installation.
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backButtonFull}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  const { MapView, Marker, PROVIDER_GOOGLE } = mapsComponents;
+
   return (
     <>
       <View style={styles.container}>
@@ -182,7 +208,6 @@ export default function NgoMapView() {
               }}
               onPress={() => handleMarkerPress(listing)}
             >
-              {/* Custom Marker */}
               <View style={styles.markerContainer}>
                 <View
                   style={[
@@ -195,7 +220,6 @@ export default function NgoMapView() {
                 >
                   <Ionicons name="fast-food" size={20} color="#FFFFFF" />
                 </View>
-                {/* Quantity Badge on Marker */}
                 <View style={styles.markerBadge}>
                   <Text style={styles.markerBadgeText}>
                     {listing.quantity_kg}kg
@@ -322,7 +346,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 8,
     borderLeftColor: "transparent",
     borderRightColor: "transparent",
-    // Border top color is set dynamically
     marginTop: -2,
   },
   markerBadge: {

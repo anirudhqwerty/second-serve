@@ -63,10 +63,11 @@ export default function UpdateLocation() {
   const getMapsComponents = () => {
     if (Platform.OS === "web") return null;
     try {
-      const MapView = require("react-native-maps").default;
-      const { PROVIDER_GOOGLE } = require("react-native-maps");
-      const { Region } = require("react-native-maps");
-      return { MapView, PROVIDER_GOOGLE, Region };
+      const Maps = require("react-native-maps");
+      return {
+        MapView: Maps.default,
+        PROVIDER_GOOGLE: Maps.PROVIDER_GOOGLE,
+      };
     } catch (error) {
       console.warn("react-native-maps not available:", error);
       return null;
@@ -238,6 +239,33 @@ export default function UpdateLocation() {
     }
   };
 
+  if (!mapsComponents) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#007AFF" />
+          </Pressable>
+          <Text style={styles.headerTitle}>Set NGO Location</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.messageContainer}>
+          <Text style={styles.messageText}>
+            Maps library not available. Please check your installation.
+          </Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backButtonFull}
+          >
+            <Text style={styles.backButtonText}>Go Back</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  const { MapView, PROVIDER_GOOGLE } = mapsComponents;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -249,16 +277,14 @@ export default function UpdateLocation() {
       </View>
 
       <View style={styles.mapContainer}>
-        {mapsComponents && (
-          <mapsComponents.MapView
-            ref={mapRef}
-            provider={mapsComponents.PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={location}
-            onMapReady={() => setIsMapReady(true)}
-            onRegionChangeComplete={onRegionChangeComplete}
-          />
-        )}
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={location}
+          onMapReady={() => setIsMapReady(true)}
+          onRegionChangeComplete={onRegionChangeComplete}
+        />
         <View style={styles.markerFixed}>
           <View style={styles.markerPulse} />
           <Ionicons name="location-sharp" size={40} color="#EA4335" />
